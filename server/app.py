@@ -1,26 +1,114 @@
 #!/usr/bin/env python3
 
-from flask import request, session
+from flask import request, session, make_response
 from flask_restful import Resource
 from sqlalchemy.exc import IntegrityError
+from models import db, User, Recipe
 
 from config import app, db, api
 from models import User, Recipe
 
 class Signup(Resource):
-    pass
+
+    def post(self):
+
+        data = request.get_json()
+
+        try:
+            user = User(
+                username=data['username'],
+                bio=data.get('bio'),
+                image_url=data.get('image_url')
+            )
+
+            user.password_hash = data['password']
+
+            db.session.add(user)
+            db.session.commit()
+
+            session['user_id'] = user.id
+
+            return user.to_dict(), 201
+
+        except:
+            return {"error": "Unprocessable Entity"}, 422
 
 class CheckSession(Resource):
-    pass
+
+    def get(self):
+
+        user_id = session.get('user_id')
+
+        if user_id:
+            user = User.query.get(user_id)
+            return user.to_dict(), 200
+
+        return {"error": "Unauthorized"}, 401
 
 class Login(Resource):
-    pass
+
+    def post(self):
+
+        data = request.get_json()
+
+        user = User.query.filter_by(username=data['username']).first()
+
+        if user and user.authenticate(data['password']):
+            session['user_id'] = user.id
+            return user.to_dict(), 200
+
+        return {"error": "Unauthorized"}, 401
 
 class Logout(Resource):
-    pass
+
+    def delete(self):
+
+        if session.get('user_id'):
+            session['user_id'] = None
+            return {}, 204
+
+        return {"error": "Unauthorized"}, 401
 
 class RecipeIndex(Resource):
-    pass
+
+    def get(self):
+
+        user_id = session.get('user_id')
+
+        if not user_id:
+            return {"error": "Unauthorized"}, 401
+
+        user = User.query.get(user_id)
+
+        recipes = [recipe.to_dict() for recipe in user.recipes]
+
+        return recipes, 200
+
+
+    def post(self):
+
+        user_id = session.get('user_id')
+
+        if not user_id:
+            return {"error": "Unauthorized"}, 401
+
+        data = request.get_json()
+
+        try:
+            recipe = Recipe(
+                title=data['title'],
+                instructions=data['instructions'],
+                minutes_to_complete=data['minutes_to_complete'],
+                user_id=user_id
+            )
+
+            db.session.add(recipe)
+            db.session.commit()
+
+            return recipe.to_dict(), 201
+
+        except:
+            return {"error": "Unprocessable Entity"}, 422
 
 api.add_resource(Signup, '/signup', endpoint='signup')
 api.add_resource(CheckSession, '/check_session', endpoint='check_session')
